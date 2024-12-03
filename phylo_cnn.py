@@ -6,6 +6,8 @@ import numpy as np
 import os
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import LabelEncoder
+import pickle
+
 
 # Set device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -16,8 +18,9 @@ NUCLEOTIDE_DICT = {'A': 0, 'T': 1, 'C': 2, 'G': 3, '-': 4}
 PADDING_VALUE = -15
 BATCH_SIZE = 150
 NUM_CLASSES = 3
-LEARNING_RATE = 0.001
-NUM_EPOCHS = 50  # You can adjust based on early stopping
+# LEARNING_RATE = 0.001
+LEARNING_RATE = 1
+NUM_EPOCHS = 1  # You can adjust based on early stopping
 
 # Function to read and preprocess the data
 def read_alignment_file(file_path):
@@ -261,6 +264,10 @@ def main():
 
     # Evaluate the model
     outputs, targets = evaluate_model(trained_model, test_loader)
+
+
+    with open('label_encoder.pkl', 'wb') as f:
+        pickle.dump(train_dataset.label_encoder, f)
 
 if __name__ == '__main__':
     main()
