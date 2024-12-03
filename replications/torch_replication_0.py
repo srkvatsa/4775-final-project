@@ -7,6 +7,7 @@ import time
 import argparse
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import OneHotEncoder
+
 # first attempt at replicating
 # Define CNN Model in PyTorch
 class PhyloCNN(nn.Module):
