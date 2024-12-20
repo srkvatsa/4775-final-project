@@ -2,21 +2,22 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.utils.data import TensorDataset, DataLoader
+
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import precision_recall_curve, average_precision_score
 
 import numpy as np
 import argparse, time, os
-from math import factorial, ceil
-from math import log
+from math import factorial
+
 
 # hyperparameters
 LEARNING_RATE = 1e-3
 NUM_EPOCHS = 5 # 20 # 200 # 100 # 50 # 200 # 10
 BATCH_SIZE = 150
 PATIENCE = 10
-
-# ----------------------
-# Utility Functions
-# ----------------------
 
 def n_unroot(Ntaxa):
     """
@@ -27,7 +28,7 @@ def n_unroot(Ntaxa):
     N = factorial(2 * Ntaxa - 5) // (factorial(Ntaxa - 3) * (2 ** (Ntaxa - 3)))
     return int(N)
 
-#Read FASTA convert to numeric
+# Read FASTA convert to numeric
 def fasta_pars(aln_file, seq_number, Lmax):
     aln=open(aln_file)
     dic={'A':'0','T':'1','C':'2','G':'3','-':'4'}
@@ -52,7 +53,7 @@ def fasta_pars(aln_file, seq_number, Lmax):
                 matrix_out.append(taxa_block)
     return np.array(matrix_out)
 
-#Read training, validation and test datasets to equalize sizes 
+# Read training, validation and test datasets to equalize sizes 
 def tv_parse(train, valid, test, seq_number=4):
     tr=open(train)
     va=open(valid)
@@ -109,29 +110,28 @@ class StandardCNN(nn.Module):
     def __init__(self, Ntaxa, Aln_length, conv_pool_n=8):
         super(StandardCNN, self).__init__()
 
-        # Hardcoded hyperparams from your Keras code
+        # hardcoded hyperparams
         self.conv_x = [4,1,1,1,1,1,1,1]
         self.conv_y = [1,2,2,2,2,2,2,2]
         self.pool   = [1,4,4,4,2,2,2,1]
         self.filter_s = [1024,1024,128,128,128,128,128,128]
         
-        # For the classification layer:
+        # for the classification layer
         self.Nlabels = n_unroot(Ntaxa)
         
-        # Build convolutional layers
-        # Each iteration does: ZeroPadding2D + Conv2D + BatchNorm + Dropout + AvgPool
+        # build convolutional layers
+        # each iteration does: ZeroPadding2D + Conv2D + BatchNorm + Dropout + AvgPool
         self.convs = nn.ModuleList()
         self.bns = nn.ModuleList()
         self.pools = nn.ModuleList()
         self.dropouts = nn.ModuleList()
         
-        # The input channel is 1
         in_channels = 1
         
         for l in range(conv_pool_n):
             # ZeroPadding2D equivalent: we only pad along the width dimension (Aln_length dimension)
-            # In PyTorch, nn.ZeroPad2d(padding=(left,right,top,bottom)).
-            # Keras code: ZeroPadding2D(((0,0),(0, conv_y[l]-1))).
+            # PyTorch: nn.ZeroPad2d(padding=(left,right,top,bottom)).
+            # keras code (from paper): ZeroPadding2D(((0,0),(0, conv_y[l]-1))).
             # That’s “top=0, bottom=0, left=0, right=conv_y[l]-1”.
             pad_left   = 0
             pad_right  = self.conv_y[l] - 1 if self.conv_y[l] > 1 else 0
@@ -184,11 +184,10 @@ class StandardCNN(nn.Module):
         # return flatten_dim
 
         dummy = torch.zeros(1, 1, Ntaxa, Aln_length)
-        self.eval() # temporarily switch to eval mode to avoid BN complaining about batch size = 1
+        self.eval() # temporarily switch to eval mode to avoid batch normalization function complaining about batch size = 1
         with torch.no_grad():
             for block in self.convs:
                 dummy = block(dummy)
-        # Switch back to train mode if needed
         self.train() # switch back to training mode
         flatten_dim = dummy.numel()
         return flatten_dim
@@ -205,7 +204,7 @@ class StandardCNN(nn.Module):
 
         # print(f"convolved x.shape: {x.shape}")
         
-        x = x.view(x.size(0), -1)  # Flatten
+        x = x.view(x.size(0), -1)  # flatten
         # print(f"flattened x.shape: {x.shape}")
         x = F.relu(self.fc1(x))
         x = self.dropout_fc(x)
@@ -263,11 +262,11 @@ def train_model(model, train_loader, valid_loader, device,
         
         print(f"Epoch [{epoch+1}/{epochs}] - Train Loss: {train_loss:.4f}  Val Loss: {val_loss:.4f}")
         
-        # Early Stopping logic
+        # early stopping logic
         if val_loss < best_val_loss - 1e-3:
             best_val_loss = val_loss
             patience_counter = 0
-            # Save best model
+            # save best model
             torch.save(model.state_dict(), save_path)
         else:
             patience_counter += 1
@@ -276,14 +275,54 @@ def train_model(model, train_loader, valid_loader, device,
             print("Early stopping triggered.")
             break
     
-    # Load the best weights
+    # load the best weights
     if os.path.exists(save_path):
         model.load_state_dict(torch.load(save_path))
 
-def evaluate_model(model, test_loader, device):
+# def evaluate_model(model, test_loader, device):
+#     """
+#     Evaluate the model on a test set.
+#     Returns (test_loss, test_accuracy, class_probs, predicted_labels).
+#     """
+#     criterion = nn.CrossEntropyLoss()
+#     model.eval()
+    
+#     test_loss = 0.0
+#     correct = 0
+#     class_probs_list = []
+#     all_labels = []
+    
+#     with torch.no_grad():
+#         for X_test, y_test in test_loader:
+#             X_test = X_test.to(device, dtype=torch.float32)
+#             y_test = y_test.to(device, dtype=torch.long)
+
+#             outputs = model(X_test)  # logits
+#             loss = criterion(outputs, y_test)
+#             test_loss += loss.item() * X_test.size(0)
+
+#             probs = F.softmax(outputs, dim=1)
+#             class_probs_list.append(probs.cpu().numpy())
+            
+#             _, preds = torch.max(outputs, dim=1)
+#             correct += torch.sum(preds == y_test).item()
+            
+#             all_labels.append(preds.cpu().numpy())
+
+#     test_loss /= len(test_loader.dataset)
+#     accuracy = correct / len(test_loader.dataset)
+
+#     # concatenate all probabilities and predicted labels
+#     class_probs = np.concatenate(class_probs_list, axis=0)
+#     predicted_labels = np.concatenate(all_labels, axis=0)
+    
+#     return test_loss, accuracy, class_probs, predicted_labels
+
+def evaluate_model(model, test_loader, device, num_classes, output_curve_path='/home/rl659/4775-final-project/figures/micro_pr_curve.png'):
     """
     Evaluate the model on a test set.
     Returns (test_loss, test_accuracy, class_probs, predicted_labels).
+    Additionally, this function will create a micro-averaged precision-recall curve and save it to a file.
     """
     criterion = nn.CrossEntropyLoss()
     model.eval()
@@ -291,7 +330,8 @@ def evaluate_model(model, test_loader, device):
     test_loss = 0.0
     correct = 0
     class_probs_list = []
-    all_labels = []
+    all_predicted_labels = []
+    all_true_labels = []
     
     with torch.no_grad():
         for X_test, y_test in test_loader:
@@ -308,21 +348,39 @@ def evaluate_model(model, test_loader, device):
             _, preds = torch.max(outputs, dim=1)
             correct += torch.sum(preds == y_test).item()
             
-            all_labels.append(preds.cpu().numpy())
+            all_predicted_labels.append(preds.cpu().numpy())
+            all_true_labels.append(y_test.cpu().numpy())
 
     test_loss /= len(test_loader.dataset)
     accuracy = correct / len(test_loader.dataset)
 
-    # Concatenate all probabilities and predicted labels
+    # concatenate all probabilities, predicted labels, and true labels
     class_probs = np.concatenate(class_probs_list, axis=0)
-    predicted_labels = np.concatenate(all_labels, axis=0)
+    predicted_labels = np.concatenate(all_predicted_labels, axis=0)
+    true_labels = np.concatenate(all_true_labels, axis=0)
+    
+    # compute micro-averaged precision-recall curve
+    # binarize the true labels for all classes
+    true_labels_binarized = label_binarize(true_labels, classes=np.arange(num_classes))
+    
+    # flatten both the true labels and predicted probabilities for micro-averaging
+    y_true_all = true_labels_binarized.ravel()
+    y_score_all = class_probs.ravel()
+    
+    precision, recall, thresholds = precision_recall_curve(y_true_all, y_score_all)
+    avg_precision = average_precision_score(y_true_all, y_score_all)
+    
+    plt.figure(figsize=(8, 6))
+    plt.step(recall, precision, where='post', label='Micro-Averaged (average precision = {:.2f})'.format(avg_precision))
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Micro-Averaged Precision-Recall Curve (200 epochs, early stopping at 53/200 epochs)')
+    plt.legend(loc='lower left')
+    plt.grid(True)
+    plt.savefig(output_curve_path)
+    plt.close()
     
     return test_loss, accuracy, class_probs, predicted_labels
-
-
-# ----------------------
-# Main Script
-# ----------------------
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch run')
@@ -333,13 +391,13 @@ def main():
     parser.add_argument('-N', dest='Ntaxa', type=int, help="Number of taxa")
     # parser.add_argument('--batch_size', default=100, type=int, help="Batch size (default 100)")
     args = parser.parse_args()
+
+    print(args.convert_dataset)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # ----------------------------
-    # Load data (.npy files)
-    # ----------------------------
+    # parse/load data
     train_data, valid_data, test_data = None, None, None
     if args.convert_dataset:
         print("Parsing raw FASTA files and saving outputs as npy files")
@@ -350,22 +408,22 @@ def main():
         print("Done parsing data and saving output")
     else:
         print("Reading input .npy arrays")
-        train_data = np.load(args.TRAIN)   # shape: (num_samples, Ntaxa, Aln_length, 1) in your Keras code
+        train_data = np.load(args.TRAIN)   # shape: (num_samples, Ntaxa, Aln_length, 1) in Keras code
         valid_data = np.load(args.VALID)
         test_data  = np.load(args.TEST)
         print("Done reading data")
     
-    # Generate labels (one-hot in Keras). In PyTorch, we'll store them as class indices.
+    # generate labels (one-hot in Keras). In PyTorch, we'll store them as class indices.
     train_label_onehot = build_labels(args.Ntaxa, train_data)
     valid_label_onehot = build_labels(args.Ntaxa, valid_data)
     test_label_onehot  = build_labels(args.Ntaxa, test_data)
     
-    # Convert one-hot to integer class labels
+    # convert one-hot to integer class labels
     train_label_idx = np.argmax(train_label_onehot, axis=1)
     valid_label_idx = np.argmax(valid_label_onehot, axis=1)
     test_label_idx  = np.argmax(test_label_onehot, axis=1)
     
-    # In Keras, the data is shape (N, Ntaxa, Aln_length, 1).
+    # In original code from paper (Keras), the data is shape (N, Ntaxa, Aln_length, 1).
     # PyTorch expects (N, channels, H, W). We can reshape to (N, 1, Ntaxa, Aln_length).
     def reshape_for_torch(arr):
         # shape is (N, Ntaxa, Aln_length)
@@ -388,7 +446,6 @@ def main():
     # ----------------------------
     # Create PyTorch Datasets & Loaders
     # ----------------------------
-    from torch.utils.data import TensorDataset, DataLoader
     
     train_ds = TensorDataset(torch.from_numpy(train_data_torch),
                              torch.from_numpy(train_label_idx))
@@ -401,10 +458,8 @@ def main():
     valid_loader = DataLoader(valid_ds, batch_size=BATCH_SIZE, shuffle=False)
     test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
 
-    # ----------------------------
-    # Build and Train Model
-    # ----------------------------
-    # We assume the shape: (N, 1, Ntaxa, Aln_length). Let’s figure out Aln_length from data.
+    # build and train model
+    # assume the shape is (N, 1, Ntaxa, Aln_length)
     Ntaxa = train_data_torch.shape[2]
     Aln_length = train_data_torch.shape[3]
     
@@ -416,17 +471,44 @@ def main():
     end_time = time.time()
     print(f"{(end_time - start_time):.1f} sec for training")
     
-    # ----------------------------
-    # Evaluate best model on Test set
-    # ----------------------------
-    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device)
+    # evaluate best model on test set
+    # test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device)
+
+    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device, num_classes=model_cnn.Nlabels)
+
     print("Evaluate with best class weights")
     print(f"Test Loss: {test_loss:.4f}   Test Accuracy: {test_acc:.4f}")
     
-    # Save results
+    # save results
     np.savetxt("test.evals_class.txt", np.array([test_loss, test_acc]), fmt='%f')
     np.savetxt("test.classprobs_class.txt", class_probs, fmt='%f')
     np.savetxt("test.classeslab_class.txt", predicted_labels, fmt='%d')
 
 if __name__ == "__main__":
-    main()
+    # main()
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    model = StandardCNN(Ntaxa=4, Aln_length=890, conv_pool_n=8).to(device)
+    model.load_state_dict(torch.load("/home/rl659/4775-final-project/saved_models/full_model/150_1e-3_200.pt"))
+
+    test_data  = np.load("/home/rl659/4775-final-project/data/gap50k_500/TEST.npy")
+    test_label_onehot  = build_labels(num_taxa=4, data_array=test_data)
+    test_label_idx  = np.argmax(test_label_onehot, axis=1)
+
+    def reshape_for_torch(arr):
+        # shape is (N, Ntaxa, Aln_length)
+        if arr.ndim == 3:
+            arr = np.expand_dims(arr, axis=-1)  # (N, Ntaxa, Aln_length, 1)
+
+        arr = np.transpose(arr, (0, 3, 1, 2))   # (N, 1, Ntaxa, Aln_length)
+        return arr
+
+    test_data_torch  = reshape_for_torch(test_data)
+
+    test_ds  = TensorDataset(torch.from_numpy(test_data_torch),
+                             torch.from_numpy(test_label_idx))
+    test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
+    
+    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model, test_loader, device, num_classes=model.Nlabels)
