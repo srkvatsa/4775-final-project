@@ -10,7 +10,7 @@ from math import log
 
 # hyperparameters
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 200 # 10
+NUM_EPOCHS = 5 # 20 # 200 # 100 # 50 # 200 # 10
 BATCH_SIZE = 150
 PATIENCE = 10
 
@@ -24,7 +24,7 @@ def n_unroot(Ntaxa):
         N = factorial(2*Ntaxa - 5) / (factorial(Ntaxa - 3) * 2^(Ntaxa - 3))
     Returns an integer.
     """
-    N = factorial(2*Ntaxa - 5) // (factorial(Ntaxa - 3) * (2**(Ntaxa - 3)))
+    N = factorial(2 * Ntaxa - 5) // (factorial(Ntaxa - 3) * (2 ** (Ntaxa - 3)))
     return int(N)
 
 #Read FASTA convert to numeric
@@ -198,15 +198,15 @@ class StandardCNN(nn.Module):
         """
         Forward pass. x should be shape (batch_size, 1, Ntaxa, Aln_length)
         """
-        print(f"initial x.shape: {x.shape}")
+        # print(f"initial x.shape: {x.shape}")
 
         for block in self.convs:
             x = block(x)
 
-        print(f"convolved x.shape: {x.shape}")
+        # print(f"convolved x.shape: {x.shape}")
         
         x = x.view(x.size(0), -1)  # Flatten
-        print(f"flattened x.shape: {x.shape}")
+        # print(f"flattened x.shape: {x.shape}")
         x = F.relu(self.fc1(x))
         x = self.dropout_fc(x)
         x = self.fc2(x)  # logits
@@ -218,7 +218,7 @@ class StandardCNN(nn.Module):
 # ----------------------
 
 def train_model(model, train_loader, valid_loader, device, 
-                epochs=NUM_EPOCHS, patience=PATIENCE, lr=LEARNING_RATE, save_path='/home/rl659/4775-final-project/saved_models/full_model/best_weights_clas.pt'):
+                epochs=NUM_EPOCHS, patience=PATIENCE, lr=LEARNING_RATE, save_path=f"/home/rl659/4775-final-project/saved_models/full_model/{BATCH_SIZE}_{LEARNING_RATE:.2e}_{NUM_EPOCHS}.pt"):
     """
     A simple training loop with early stopping based on validation loss.
     """
