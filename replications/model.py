@@ -491,7 +491,7 @@ def main():
 
     pr_curve_file = os.path.join(FIGURE_PATH, f"{data_type}_micro_pr_curve_{NUM_EPOCHS}.png")
 
-    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model_cnn.Nlabels)
+    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model_cnn.Nlabels, output_curve_path=pr_curve_file)
 
     print("Evaluate with best class weights")
     print(f"Test Loss: {test_loss:.4f}   Test Accuracy: {test_acc:.4f}")
@@ -537,4 +537,4 @@ if __name__ == "__main__":
 
     # pr_curve_file = os.path.join(FIGURE_PATH, f"{data_type}_micro_pr_curve_{NUM_EPOCHS}.png")
     
-    # test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model.Nlabels)
+    # test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model.Nlabels, output_curve_path=pr_curve_file)
