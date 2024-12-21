@@ -12,12 +12,20 @@ import numpy as np
 import argparse, time, os
 from math import factorial
 
-
 # hyperparameters
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 5 # 20 # 200 # 100 # 50 # 200 # 10
+NUM_EPOCHS = 200 # 10 # 15 # 20 # 25 # 100 # 200
 BATCH_SIZE = 150
 PATIENCE = 10
+
+# paths
+HOME_PATH = "/home/rl659/" # change this if using local machine
+PROJECT_PATH = os.path.join(HOME_PATH, "4775-final-project")
+DATA_PATH = os.path.join(PROJECT_PATH, "data")
+GAPPED_PATH = os.path.join(DATA_PATH, "gap50k_500")
+UNGAPPED_PATH = os.path.join(DATA_PATH, "nogap50k_500")
+SAVED_MODEL_PATH = os.path.join(PROJECT_PATH, "saved_models/full_model")
+FIGURE_PATH = os.path.join(PROJECT_PATH, "figures")
 
 def n_unroot(Ntaxa):
     """
@@ -31,7 +39,7 @@ def n_unroot(Ntaxa):
 # Read FASTA convert to numeric
 def fasta_pars(aln_file, seq_number, Lmax):
     aln=open(aln_file)
-    dic={'A':'0','T':'1','C':'2','G':'3','-':'4'}
+    dic={'A': '0', 'T': '1', 'C': '2','G': '3', '-': '4'}
     matrix_out=[]
     fasta_dic={}
     for line in aln:
@@ -107,14 +115,14 @@ class StandardCNN(nn.Module):
       repeated 'conv_pool_n' times (8 in your Keras code).
     - Then Flatten, Dense(1024), Dropout, Dense(Nlabels).
     """
-    def __init__(self, Ntaxa, Aln_length, conv_pool_n=8):
+    def __init__(self, Ntaxa, Aln_length, gapped, conv_pool_n=8):
         super(StandardCNN, self).__init__()
 
         # hardcoded hyperparams
-        self.conv_x = [4,1,1,1,1,1,1,1]
-        self.conv_y = [1,2,2,2,2,2,2,2]
-        self.pool   = [1,4,4,4,2,2,2,1]
-        self.filter_s = [1024,1024,128,128,128,128,128,128]
+        self.conv_x = [4, 1, 1, 1, 1, 1, 1, 1]
+        self.conv_y = [1, 2, 2, 2, 2, 2, 2, 2]
+        self.pool   = [1, 4, 4, 4, 2, 2, 2, 1] if gapped else [1, 2, 2, 2, 2, 2, 2, 7]
+        self.filter_s = [1024, 1024, 128, 128, 128, 128, 128, 128]
         
         # for the classification layer
         self.Nlabels = n_unroot(Ntaxa)
@@ -216,8 +224,8 @@ class StandardCNN(nn.Module):
 # Training / Evaluation
 # ----------------------
 
-def train_model(model, train_loader, valid_loader, device, 
-                epochs=NUM_EPOCHS, patience=PATIENCE, lr=LEARNING_RATE, save_path=f"/home/rl659/4775-final-project/saved_models/full_model/{BATCH_SIZE}_{LEARNING_RATE:.2e}_{NUM_EPOCHS}.pt"):
+def train_model(model, train_loader, valid_loader, device, save_path, 
+                epochs=NUM_EPOCHS, patience=PATIENCE, lr=LEARNING_RATE):
     """
     A simple training loop with early stopping based on validation loss.
     """
@@ -318,7 +326,7 @@ def train_model(model, train_loader, valid_loader, device,
     
 #     return test_loss, accuracy, class_probs, predicted_labels
 
-def evaluate_model(model, test_loader, device, num_classes, output_curve_path='/home/rl659/4775-final-project/figures/micro_pr_curve.png'):
+def evaluate_model(model, test_loader, device, num_epochs, data_type, num_classes, output_curve_path):
     """
     Evaluate the model on a test set.
     Returns (test_loss, test_accuracy, class_probs, predicted_labels).
@@ -374,7 +382,7 @@ def evaluate_model(model, test_loader, device, num_classes, output_curve_path='/
     plt.step(recall, precision, where='post', label='Micro-Averaged (average precision = {:.2f})'.format(avg_precision))
     plt.xlabel('Recall')
     plt.ylabel('Precision')
-    plt.title('Micro-Averaged Precision-Recall Curve (200 epochs, early stopping at 53/200 epochs)')
+    plt.title(f'Micro-Averaged Precision-Recall Curve ({data_type}, {num_epochs} epochs)')
     plt.legend(loc='lower left')
     plt.grid(True)
     plt.savefig(output_curve_path)
@@ -387,12 +395,18 @@ def main():
     parser.add_argument('--train', dest='TRAIN', help="Training dataset in .npy")
     parser.add_argument('--valid', dest='VALID', help="Validation dataset in .npy")
     parser.add_argument('--test', dest='TEST', help="Test dataset in .npy")
-    parser.add_argument('--convert_dataset', dest="convert_dataset", type=bool, help="flag to convert raw FASTA into npy")
+    parser.add_argument('--convert_dataset', dest='convert_dataset', type=int, help="flag to convert raw FASTA into npy")
+    parser.add_argument('--gapped', dest='gapped', type=int, help="flag to determine whether to used gapped or ungapped dataset")
     parser.add_argument('-N', dest='Ntaxa', type=int, help="Number of taxa")
     # parser.add_argument('--batch_size', default=100, type=int, help="Batch size (default 100)")
     args = parser.parse_args()
 
     print(args.convert_dataset)
+    print(args.gapped)
+
+    data_path = GAPPED_PATH if args.gapped else UNGAPPED_PATH
+
+    print(f"data path: {data_path}")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -401,10 +415,10 @@ def main():
     train_data, valid_data, test_data = None, None, None
     if args.convert_dataset:
         print("Parsing raw FASTA files and saving outputs as npy files")
-        train_data, valid_data, test_data = tv_parse("/home/rl659/4775-final-project/data/gap50k_500/TRAIN.aln", "/home/rl659/4775-final-project/data/gap50k_500/VALID.aln", "/home/rl659/4775-final-project/data/gap50k_500/TEST.aln")
-        np.save("/home/rl659/4775-final-project/data/gap50k_500/TRAIN.npy", train_data)
-        np.save("/home/rl659/4775-final-project/data/gap50k_500/VALID.npy", valid_data)
-        np.save("/home/rl659/4775-final-project/data/gap50k_500/TEST.npy", test_data)
+        train_data, valid_data, test_data = tv_parse(os.path.join(data_path, "TRAIN.aln"), os.path.join(data_path, "VALID.aln"), os.path.join(data_path, "TEST.aln"))
+        np.save(os.path.join(data_path, "TRAIN.npy"), train_data)
+        np.save(os.path.join(data_path, "VALID.npy"), valid_data)
+        np.save(os.path.join(data_path, "TEST.npy"), test_data)
         print("Done parsing data and saving output")
     else:
         print("Reading input .npy arrays")
@@ -443,10 +457,7 @@ def main():
 
     print(train_data_torch.shape)
     
-    # ----------------------------
-    # Create PyTorch Datasets & Loaders
-    # ----------------------------
-    
+    # create PyTorch datasets & loaders
     train_ds = TensorDataset(torch.from_numpy(train_data_torch),
                              torch.from_numpy(train_label_idx))
     valid_ds = TensorDataset(torch.from_numpy(valid_data_torch),
@@ -463,18 +474,24 @@ def main():
     Ntaxa = train_data_torch.shape[2]
     Aln_length = train_data_torch.shape[3]
     
-    model_cnn = StandardCNN(Ntaxa, Aln_length, conv_pool_n=8).to(device)
+    model_cnn = StandardCNN(Ntaxa, Aln_length, args.gapped, conv_pool_n=8).to(device)
     print(model_cnn)
 
+    data_type = "gap" if args.gapped else "nogap"
+
+    saved_model_file = os.path.join(SAVED_MODEL_PATH, f"{data_type}_{BATCH_SIZE}_{LEARNING_RATE:.2e}_{NUM_EPOCHS}.pt")
+
     start_time = time.time()
-    train_model(model_cnn, train_loader, valid_loader, device)
+    train_model(model_cnn, train_loader, valid_loader, device, saved_model_file)
     end_time = time.time()
     print(f"{(end_time - start_time):.1f} sec for training")
     
     # evaluate best model on test set
     # test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device)
 
-    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device, num_classes=model_cnn.Nlabels)
+    pr_curve_file = os.path.join(FIGURE_PATH, f"{data_type}_micro_pr_curve_{NUM_EPOCHS}.png")
+
+    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model_cnn, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model_cnn.Nlabels)
 
     print("Evaluate with best class weights")
     print(f"Test Loss: {test_loss:.4f}   Test Accuracy: {test_acc:.4f}")
@@ -485,30 +502,39 @@ def main():
     np.savetxt("test.classeslab_class.txt", predicted_labels, fmt='%d')
 
 if __name__ == "__main__":
-    # main()
+    main()
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-
-    model = StandardCNN(Ntaxa=4, Aln_length=890, conv_pool_n=8).to(device)
-    model.load_state_dict(torch.load("/home/rl659/4775-final-project/saved_models/full_model/150_1e-3_200.pt"))
-
-    test_data  = np.load("/home/rl659/4775-final-project/data/gap50k_500/TEST.npy")
-    test_label_onehot  = build_labels(num_taxa=4, data_array=test_data)
-    test_label_idx  = np.argmax(test_label_onehot, axis=1)
-
-    def reshape_for_torch(arr):
-        # shape is (N, Ntaxa, Aln_length)
-        if arr.ndim == 3:
-            arr = np.expand_dims(arr, axis=-1)  # (N, Ntaxa, Aln_length, 1)
-
-        arr = np.transpose(arr, (0, 3, 1, 2))   # (N, 1, Ntaxa, Aln_length)
-        return arr
-
-    test_data_torch  = reshape_for_torch(test_data)
-
-    test_ds  = TensorDataset(torch.from_numpy(test_data_torch),
-                             torch.from_numpy(test_label_idx))
-    test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
+    # # for evaluation only
+    # parser = argparse.ArgumentParser(description='PyTorch run')
+    # parser.add_argument('--gapped', dest='gapped', type=int, help="flag to determine whether to used gapped or ungapped dataset")
+    # args = parser.parse_args()
     
-    test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model, test_loader, device, num_classes=model.Nlabels)
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # print(f"Using device: {device}")
+
+    # model = StandardCNN(Ntaxa=4, Aln_length=890, conv_pool_n=8).to(device)
+    # model.load_state_dict(torch.load(os.path.join(SAVED_MODEL_PATH, "150_1e-3_200.pt")))
+
+    # test_data  = np.load("/home/rl659/4775-final-project/data/gap50k_500/TEST.npy")
+    # test_label_onehot  = build_labels(num_taxa=4, data_array=test_data)
+    # test_label_idx  = np.argmax(test_label_onehot, axis=1)
+
+    # def reshape_for_torch(arr):
+    #     # shape is (N, Ntaxa, Aln_length)
+    #     if arr.ndim == 3:
+    #         arr = np.expand_dims(arr, axis=-1)  # (N, Ntaxa, Aln_length, 1)
+
+    #     arr = np.transpose(arr, (0, 3, 1, 2))   # (N, 1, Ntaxa, Aln_length)
+    #     return arr
+
+    # test_data_torch  = reshape_for_torch(test_data)
+
+    # test_ds  = TensorDataset(torch.from_numpy(test_data_torch),
+    #                          torch.from_numpy(test_label_idx))
+    # test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
+
+    # data_type = "gap" if args.gapped else "nogap"
+
+    # pr_curve_file = os.path.join(FIGURE_PATH, f"{data_type}_micro_pr_curve_{NUM_EPOCHS}.png")
+    
+    # test_loss, test_acc, class_probs, predicted_labels = evaluate_model(model, test_loader, device, num_epochs=NUM_EPOCHS, data_type=data_type, num_classes=model.Nlabels)
