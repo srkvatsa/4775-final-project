@@ -14,7 +14,7 @@ from math import factorial
 
 # hyperparameters
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 200 # 10 # 15 # 20 # 25 # 100 # 200
+NUM_EPOCHS = 10 # 5 # 10 # 15 # 20 # 25 # 100 # 200
 BATCH_SIZE = 150
 PATIENCE = 10
 
@@ -505,17 +505,19 @@ if __name__ == "__main__":
     main()
 
     # # for evaluation only
-    # parser = argparse.ArgumentParser(description='PyTorch run')
-    # parser.add_argument('--gapped', dest='gapped', type=int, help="flag to determine whether to used gapped or ungapped dataset")
-    # args = parser.parse_args()
-    
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # print(f"Using device: {device}")
 
-    # model = StandardCNN(Ntaxa=4, Aln_length=890, conv_pool_n=8).to(device)
+    # data_type = "gap"
+    # model = StandardCNN(Ntaxa=4, Aln_length=890, gapped=True, conv_pool_n=8).to(device)
     # model.load_state_dict(torch.load(os.path.join(SAVED_MODEL_PATH, "150_1e-3_200.pt")))
-
     # test_data  = np.load("/home/rl659/4775-final-project/data/gap50k_500/TEST.npy")
+
+    # # data_type = "nogap"
+    # # model = StandardCNN(Ntaxa=4, Aln_length=500, gapped=False, conv_pool_n=8).to(device)
+    # # model.load_state_dict(torch.load(os.path.join(SAVED_MODEL_PATH, "nogap_150_1.00e-3_200.pt")))
+    # # test_data  = np.load("/home/rl659/4775-final-project/data/nogap50k_500/TEST.npy")
+
     # test_label_onehot  = build_labels(num_taxa=4, data_array=test_data)
     # test_label_idx  = np.argmax(test_label_onehot, axis=1)
 
@@ -532,8 +534,6 @@ if __name__ == "__main__":
     # test_ds  = TensorDataset(torch.from_numpy(test_data_torch),
     #                          torch.from_numpy(test_label_idx))
     # test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
-
-    # data_type = "gap" if args.gapped else "nogap"
 
     # pr_curve_file = os.path.join(FIGURE_PATH, f"{data_type}_micro_pr_curve_{NUM_EPOCHS}.png")
     
